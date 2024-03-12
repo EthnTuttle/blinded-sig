@@ -1,18 +1,54 @@
 
 use num_bigint::{BigUint, ToBigUint};
-use num_traits::{Euclid, Pow};
+use num_traits::Euclid;
 use sha1::{Digest, Sha1};
 
 extern crate tokio;
 
 // const PRIME_ORDER_BIG_UINT: BigUint = BigUint::from_str_radix("512625", 10u32).unwrap();
 const PRIME_ORDER: u64 = 512625;
-// const GENERATOR:  =
+// Point { x: 83388, y: 406073 };
+// We hashed to curve to find this.
+// Ok(Some(83388)) is on the curve for Hello world!
+const GENERATOR: u64 = 83388;
+// We have to curve "private key" to get Alice's key
+const ALICE_PRIVATE_KEY: u64 = 391164;
 
 #[tokio::main]
 async fn main() {
-    let point = hash_to_curve("Hello world!".to_owned());
-    println!("{:?} is on the curve", point);
+    let mint_private_key = hash_to_curve("Bob's Mint".to_owned()).unwrap().unwrap();
+    println!("Bob's mint has a private key `k`: {}", mint_private_key);
+    println!("He generates his public key `K` by multiplying private key {} and GENERATOR {} mod {}", mint_private_key, GENERATOR, PRIME_ORDER);
+    println!("K = kG");
+    let mint_pub_key = (mint_private_key * GENERATOR).rem_euclid(PRIME_ORDER);
+    println!("We get a public key `K`: {}", mint_pub_key);
+    println!("(For Cashu, each amount of ecash is given a public key)");
+    println!("Now our client, Alice, sets up `Y` by hashing a secret `x` ('alice') to the curve.");
+    let client_secret = "alice";
+    let client_y = hash_to_curve(client_secret.to_owned()).unwrap().unwrap();
+    println!("Y = hash_to_curve(x)");
+    println!("We get {}", client_y);
+    println!("Now Alice can create a blinding factor by using her private key `r`");
+    println!("B_ = Y + rG");
+    let b_ = ((ALICE_PRIVATE_KEY * GENERATOR).rem_euclid(PRIME_ORDER) + client_y).rem_euclid(PRIME_ORDER);
+    println!("We end up with {}, which is passed from Alice (client) to Bob (mint)", b_);
+    println!("Bob (mint) then signs this using his private key");
+    println!("C_ = kB_");
+    let c_ = (mint_private_key * b_).rem_euclid(PRIME_ORDER);
+    println!("Alice can then unblind things using:");
+    println!("C_ - rK = kY + krG - krG = kY = C");
+    let rk = (ALICE_PRIVATE_KEY * mint_pub_key).rem_euclid(PRIME_ORDER);
+    println!("First: C_ - rK = {}", (c_ - rk).rem_euclid(PRIME_ORDER));
+    let ky = (mint_private_key * client_y).rem_euclid(PRIME_ORDER);
+    let krg = ((mint_private_key * ALICE_PRIVATE_KEY).rem_euclid(PRIME_ORDER) * GENERATOR).rem_euclid(PRIME_ORDER);
+    println!("Which is also: kY + krG = {}", ((ky + krg).rem_euclid(PRIME_ORDER) - krg).rem_euclid(PRIME_ORDER));
+    println!("Which is also kY = {}", ky);
+    let c = (c_ - rk).rem_euclid(PRIME_ORDER);
+    println!("Which is the unblinded value of C: {}", c);
+    // Carol part
+    let secret = "private key";
+    let point = hash_to_curve(secret.to_owned()).unwrap().unwrap();
+    println!("{:?} is on the curve for {}", point, secret);
 }
 
 #[derive(Debug)]
